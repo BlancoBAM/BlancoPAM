@@ -53,6 +53,7 @@ jobs:
   build:
     name: "Build — ${{ inputs.release || 'resolute' }} / ${{ inputs.flavour || 'desktop-xfce' }}"
     runs-on: ubuntu-24.04
+    timeout-minutes: 300
 
     steps:
       # -----------------------------------------------------------------------
@@ -249,6 +250,9 @@ jobs:
           echo "  ── Build flags ──────────────────────────────────────────"
           echo "  NO_HOST_RELEASE_CHECK           = yes"
           echo "  EXPERT                          = yes"
+          echo "  COMPILE_WIREGUARD               = no"
+          echo "  INSTALL_WIREGUARD               = no"
+          echo "  SKIP_EXTERNAL_TOOLCHAINS        = yes"
           echo ""
           echo "  ── Dispatch inputs ──────────────────────────────────────"
           echo "  inputs.release                  = ${{ inputs.release || '(default: resolute)' }}"
@@ -284,6 +288,9 @@ jobs:
             fi
             echo "| \`NO_HOST_RELEASE_CHECK\` | \`yes\` |"
             echo "| \`EXPERT\` | \`yes\` |"
+            echo "| \`COMPILE_WIREGUARD\` | \`no\` |"
+            echo "| \`INSTALL_WIREGUARD\` | \`no\` |"
+            echo "| \`SKIP_EXTERNAL_TOOLCHAINS\` | \`yes\` |"
           } >> $GITHUB_STEP_SUMMARY
 
       # -----------------------------------------------------------------------
@@ -299,7 +306,10 @@ jobs:
             BUILD_DESKTOP=${{ steps.params.outputs.build_desktop }} \
             ${{ steps.params.outputs.desktop_args }} \
             NO_HOST_RELEASE_CHECK=yes \
-            EXPERT=yes
+            EXPERT=yes \
+            COMPILE_WIREGUARD=no \
+            INSTALL_WIREGUARD=no \
+            SKIP_EXTERNAL_TOOLCHAINS=yes
 
       # -----------------------------------------------------------------------
       - name: Post-process — apply A733 boot scripts to image
