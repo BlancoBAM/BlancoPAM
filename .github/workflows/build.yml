@@ -99,15 +99,27 @@ jobs:
             rsync cpio kmod parted dosfstools fdisk xz-utils curl wget \
             zstd pigz python3 device-tree-compiler dialog lzop \
             libyaml-dev pkg-config libarchive-tools
-          # Pin arm-linux-gnueabi-gcc to GCC 11 — U-Boot v2018.05 is incompatible
-          # with GCC 12+ (Ubuntu 24.04 ships GCC 15 by default for this toolchain)
+          # Pin arm-linux-gnueabi-gcc to GCC 11 — U-Boot v2018.05-sun60iw2 is
+          # incompatible with GCC 12+ (Ubuntu 24.04 ships GCC 15 by default).
           sudo update-alternatives --install \
             /usr/bin/arm-linux-gnueabi-gcc arm-linux-gnueabi-gcc \
             /usr/bin/arm-linux-gnueabi-gcc-11 100
           sudo update-alternatives --install \
             /usr/bin/arm-linux-gnueabi-cpp arm-linux-gnueabi-cpp \
             /usr/bin/arm-linux-gnueabi-cpp-11 100
+
+          # U-Boot v2018.05 + GCC 11 + modern binutils (2.42) can trigger a PIE
+          # link failure on the final "LD u-boot" step.  GCC 11's arm-linux-gnueabi
+          # spec may default to PIE, and the U-Boot v2018.05 linker script is not
+          # PIE-compatible.  Fix: a thin wrapper script that injects -fno-pie -no-pie.
+          # /usr/local/bin precedes /usr/bin in PATH so it shadows the real binary.
+          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@"\n' \
+            | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
+          sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
+
           arm-linux-gnueabi-gcc-11 --version
+          /usr/local/bin/arm-linux-gnueabi-gcc --version
+          arm-linux-gnueabi-ld --version
 
       # -----------------------------------------------------------------------
       - name: Clone orangepi-build
@@ -131,13 +143,22 @@ jobs:
       - name: Inject A733 kernel patches
         run: |
           PATCH_SRC="a733-patches/patch"
-          PATCH_DST="orangepi-build/external/patch/kernel/sun60iw2-next"
+          # BRANCH=current → orangepi-build reads patches from sun60iw2-current
+          # (KERNELPATCHDIR is set to ${BOARDFAMILY}-${BRANCH} in sun60iw2.conf)
+          PATCH_DST="orangepi-build/external/patch/kernel/sun60iw2-current"
           mkdir -p "$PATCH_DST"
 
-          # Core 6.18 mainline A733 patch (required)
-          cp -v "$PATCH_SRC/0001-allwinner-a733-orangepi-4-pro-6.18-mainline.patch" "$PATCH_DST/"
+          # Core A733 patch — copy whatever patch file exists in the repo
+          # (the patch repo may use different naming conventions over time)
+          for f in \
+            "$PATCH_SRC/0001-allwinner-a733-orangepi-4-pro-6.18-mainline.patch" \
+            "$PATCH_SRC/0001-allwinner-a733-orangepi-4-pro.patch" \
+          ; do
+            [ -f "$f" ] && cp -v "$f" "$PATCH_DST/" && break || true
+          done
           # Packaging fix (required)
-          cp -v "$PATCH_SRC/0300-packaging-armbian-builddeb.patch"                   "$PATCH_DST/"
+          [ -f "$PATCH_SRC/0300-packaging-armbian-builddeb.patch" ] && \
+            cp -v "$PATCH_SRC/0300-packaging-armbian-builddeb.patch" "$PATCH_DST/"
 
           # Optional patches — copy if present
           for p in \
@@ -167,8 +188,11 @@ jobs:
       - name: Inject A733 kernel defconfig
         run: |
           mkdir -p orangepi-build/external/config/kernel
+          # BRANCH=current → orangepi-build looks for linux-sun60iw2-current-a733.config
+          # (LINUXCONFIG is set to linux-sun60iw2-current-a733 in sun60iw2.conf for
+          #  orangepi4pro boards; the -a733 suffix is applied by the board detection logic)
           cp -v a733-patches/config/orangepi_4pro_defconfig \
-            orangepi-build/external/config/kernel/linux-sun60iw2-next-a733.config
+            orangepi-build/external/config/kernel/linux-sun60iw2-current-a733.config
 
       # -----------------------------------------------------------------------
       - name: Inject BSP overlay files
@@ -240,7 +264,7 @@ jobs:
           echo ""
           echo "  ── Board / Kernel ──────────────────────────────────────"
           echo "  BOARD                           = orangepi4pro"
-          echo "  BRANCH                          = next  (Linux 6.18.y)"
+          echo "  BRANCH                          = current  (Linux 6.6.y OrangePi kernel)"
           echo "  BUILD_OPT                       = image"
           echo ""
           echo "  ── OS / Desktop ─────────────────────────────────────────"
@@ -273,10 +297,10 @@ jobs:
           echo "  ── Patches injected ─────────────────────────────────────"
           echo "  Patch source  : jonas5/Allwinner-A733-kernel"
           echo "  Kernel patches:"
-          ls -1 orangepi-build/external/patch/kernel/sun60iw2-next/ 2>/dev/null | sed 's/^/    /'
+          ls -1 orangepi-build/external/patch/kernel/sun60iw2-current/ 2>/dev/null | sed 's/^/    /'
           echo "  U-Boot patches:"
           ls -1 orangepi-build/external/patch/u-boot/u-boot-sunxi/ 2>/dev/null | sed 's/^/    /' || echo "    (none)"
-          echo "  Defconfig     : linux-sun60iw2-next-a733.config"
+          echo "  Defconfig     : linux-sun60iw2-current-a733.config"
           echo ""
           echo "============================================================"
 
@@ -286,7 +310,7 @@ jobs:
             echo "| Variable | Value |"
             echo "|---|---|"
             echo "| \`BOARD\` | \`orangepi4pro\` |"
-            echo "| \`BRANCH\` | \`next\` (Linux 6.18.y) |"
+            echo "| \`BRANCH\` | \`current\` (Linux 6.6.y OrangePi kernel) |"
             echo "| \`BUILD_OPT\` | \`image\` |"
             echo "| \`RELEASE\` | \`${{ steps.params.outputs.release }}\` |"
             echo "| \`BUILD_MINIMAL\` | \`${{ steps.params.outputs.build_minimal }}\` |"
@@ -307,6 +331,11 @@ jobs:
       - name: Build SD card image
         run: |
           cd orangepi-build
+          # BRANCH=current → Linux 6.6.y OrangePi kernel (the only supported branch
+          #   for orangepi4pro; 'legacy'=5.15, 'current'=6.6, no 'next' branch).
+          # The A733 kernel patches are injected via sun60iw2-current patch dir.
+          # SKIP_EXTERNAL_TOOLCHAINS=yes → find_toolchain() returns /usr/bin, so
+          #   the GCC 11 alternatives set above are picked up automatically.
           sudo ./build.sh \
             BOARD=orangepi4pro \
             BRANCH=current \
@@ -320,6 +349,24 @@ jobs:
             COMPILE_WIREGUARD=no \
             INSTALL_WIREGUARD=no \
             SKIP_EXTERNAL_TOOLCHAINS=yes
+
+      # -----------------------------------------------------------------------
+      - name: Dump build logs on failure
+        if: failure()
+        run: |
+          echo "=== compilation.log (last 200 lines) ==="
+          sudo cat orangepi-build/output/debug/compilation.log 2>/dev/null | tail -200 || echo "(no compilation.log)"
+          echo ""
+          echo "=== All debug logs ==="
+          sudo ls -lh orangepi-build/output/debug/ 2>/dev/null || echo "(no debug dir)"
+          echo ""
+          echo "=== U-Boot source tree (what files exist) ==="
+          find orangepi-build/.tmp/ -name "*.fex" -o -name "u-boot.bin" -o -name "u-boot-sunxi*" 2>/dev/null | head -30 || echo "(no .tmp)"
+          echo ""
+          echo "=== arm-linux-gnueabi-gcc version ==="
+          arm-linux-gnueabi-gcc-11 --version || true
+          arm-linux-gnueabi-gcc --version || true
+          which arm-linux-gnueabi-gcc || true
 
       # -----------------------------------------------------------------------
       - name: Post-process — apply A733 boot scripts to image
@@ -370,7 +417,7 @@ jobs:
           for img in $(find orangepi-build/output/ -type f -name "*.img"); do
             base=$(basename "$img")
             # Rename to include release + flavour + date
-            newname="OrangePi4Pro_${RELEASE}_${FLAVOUR}_linux6.18_${DATE}.img"
+            newname="OrangePi4Pro_${RELEASE}_${FLAVOUR}_linux6.6_${DATE}.img"
             [ "$(echo "$img" | grep -c nvme)" -gt 0 ] && newname="${newname%.img}-nvme.img"
             echo "Compressing $base → $newname.xz"
             xz -T0 -6 -c "$img" > "release_artifacts/${newname}.xz"
@@ -423,7 +470,7 @@ jobs:
           | | |
           |---|---|
           | **SoC** | Allwinner A733 (\`sun60iw2\`) |
-          | **Kernel** | Linux 6.18.y mainline + A733 patches |
+          | **Kernel** | Linux 6.6.y OrangePi kernel + A733 patches |
           | **OS** | Ubuntu ${RELEASE^} |
           | **Desktop** | ${FLAVOUR} |
           | **Build date** | ${DATE} |
@@ -441,7 +488,7 @@ jobs:
           ### Verify
           Check \`SHA256SUMS\` or the matching \`.sha256\` file for each asset.
 
-          ### Hardware support (Linux 6.18 + A733 patches)
+          ### Hardware support (Linux 6.6 OrangePi + A733 patches)
           - ✅ CPU / DVFS — 6× Cortex-A55 + 2× Cortex-A76
           - ✅ Ethernet — Motorcomm YT8531 GbE
           - ✅ MicroSD — SDC0 (/dev/mmcblk0)
