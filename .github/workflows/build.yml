@@ -117,9 +117,20 @@ jobs:
             | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
           sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
 
+          # Provide aarch64-none-linux-gnu-* aliases pointing to Ubuntu's
+          # aarch64-linux-gnu-* toolchain. When compiling on x86_64 hosts,
+          # orangepi-build (arm64.conf) expects KERNEL_COMPILER=aarch64-none-linux-gnu-
+          for bin in /usr/bin/aarch64-linux-gnu-*; do
+            base=$(basename "$bin")
+            alias_name="${base/aarch64-linux-gnu-/aarch64-none-linux-gnu-}"
+            sudo ln -sf "$bin" "/usr/local/bin/$alias_name"
+            sudo ln -sf "$bin" "/usr/bin/$alias_name"
+          done
+
           arm-linux-gnueabi-gcc-11 --version
           /usr/local/bin/arm-linux-gnueabi-gcc --version
           arm-linux-gnueabi-ld --version
+          aarch64-none-linux-gnu-gcc --version
 
       # -----------------------------------------------------------------------
       - name: Clone orangepi-build
@@ -362,7 +373,8 @@ jobs:
             EXPERT=yes \
             COMPILE_WIREGUARD=no \
             INSTALL_WIREGUARD=no \
-            SKIP_EXTERNAL_TOOLCHAINS=yes
+            SKIP_EXTERNAL_TOOLCHAINS=yes \
+            KERNEL_COMPILER=aarch64-linux-gnu-
 
       # -----------------------------------------------------------------------
       - name: Dump build logs on failure
