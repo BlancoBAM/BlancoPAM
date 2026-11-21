@@ -22,6 +22,7 @@ on:
         options:
           - desktop-xfce
           - desktop-gnome
+          - desktop-lxqt
           - server
           - minimal
       target_storage:
@@ -196,6 +197,11 @@ jobs:
               BUILD_DESKTOP="yes"
               DESKTOP_ENV="gnome"
               DESKTOP_ARGS="DESKTOP_ENVIRONMENT=gnome DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base DESKTOP_APPGROUPS_SELECTED="
+              ;;
+            desktop-lxqt)
+              BUILD_DESKTOP="yes"
+              DESKTOP_ENV="lxqt"
+              DESKTOP_ARGS="DESKTOP_ENVIRONMENT=lxqt DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base DESKTOP_APPGROUPS_SELECTED="
               ;;
           esac
 
