@@ -214,6 +214,73 @@ jobs:
           echo "| Storage | \`$TARGET\` |"   >> $GITHUB_STEP_SUMMARY
 
       # -----------------------------------------------------------------------
+      # Print every custom config variable before the build script initializes
+      - name: Print custom config variables
+        run: |
+          echo "============================================================"
+          echo "  CUSTOM BUILD CONFIG — resolved before orangepi-build init"
+          echo "============================================================"
+          echo ""
+          echo "  ── Board / Kernel ──────────────────────────────────────"
+          echo "  BOARD                           = orangepi4pro"
+          echo "  BRANCH                          = next  (Linux 6.18.y)"
+          echo "  BUILD_OPT                       = image"
+          echo ""
+          echo "  ── OS / Desktop ─────────────────────────────────────────"
+          echo "  RELEASE                         = ${{ steps.params.outputs.release }}"
+          echo "  BUILD_MINIMAL                   = ${{ steps.params.outputs.build_minimal }}"
+          echo "  BUILD_DESKTOP                   = ${{ steps.params.outputs.build_desktop }}"
+          DESKTOP_ARGS="${{ steps.params.outputs.desktop_args }}"
+          if [ -n "$DESKTOP_ARGS" ]; then
+            # Print each key=value on its own indented line
+            for kv in $DESKTOP_ARGS; do
+              echo "  ${kv%%=*}$(printf '%*s' $((32 - ${#kv%%=*})) '')= ${kv#*=}"
+            done
+          else
+            echo "  DESKTOP_ENVIRONMENT             = (none — server/minimal)"
+          fi
+          echo ""
+          echo "  ── Build flags ──────────────────────────────────────────"
+          echo "  NO_HOST_RELEASE_CHECK           = yes"
+          echo "  EXPERT                          = yes"
+          echo ""
+          echo "  ── Dispatch inputs ──────────────────────────────────────"
+          echo "  inputs.release                  = ${{ inputs.release || '(default: resolute)' }}"
+          echo "  inputs.flavour                  = ${{ inputs.flavour || '(default: desktop-xfce)' }}"
+          echo "  inputs.target_storage           = ${{ inputs.target_storage || '(default: sd)' }}"
+          echo "  inputs.publish_release          = ${{ inputs.publish_release }}"
+          echo ""
+          echo "  ── Patches injected ─────────────────────────────────────"
+          echo "  Patch source  : jonas5/Allwinner-A733-kernel"
+          echo "  Kernel patches:"
+          ls -1 orangepi-build/external/patch/kernel/sun60iw2-next/ 2>/dev/null | sed 's/^/    /'
+          echo "  U-Boot patches:"
+          ls -1 orangepi-build/external/patch/u-boot/u-boot-sunxi/ 2>/dev/null | sed 's/^/    /' || echo "    (none)"
+          echo "  Defconfig     : linux-sun60iw2-next-a733.config"
+          echo ""
+          echo "============================================================"
+
+          # Also append to the step summary
+          {
+            echo "### ⚙️ Custom Config Variables"
+            echo "| Variable | Value |"
+            echo "|---|---|"
+            echo "| \`BOARD\` | \`orangepi4pro\` |"
+            echo "| \`BRANCH\` | \`next\` (Linux 6.18.y) |"
+            echo "| \`BUILD_OPT\` | \`image\` |"
+            echo "| \`RELEASE\` | \`${{ steps.params.outputs.release }}\` |"
+            echo "| \`BUILD_MINIMAL\` | \`${{ steps.params.outputs.build_minimal }}\` |"
+            echo "| \`BUILD_DESKTOP\` | \`${{ steps.params.outputs.build_desktop }}\` |"
+            if [ -n "$DESKTOP_ARGS" ]; then
+              for kv in $DESKTOP_ARGS; do
+                echo "| \`${kv%%=*}\` | \`${kv#*=}\` |"
+              done
+            fi
+            echo "| \`NO_HOST_RELEASE_CHECK\` | \`yes\` |"
+            echo "| \`EXPERT\` | \`yes\` |"
+          } >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------------------
       - name: Build SD card image
         run: |
           cd orangepi-build
