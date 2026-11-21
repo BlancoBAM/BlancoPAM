@@ -309,7 +309,7 @@ jobs:
           cd orangepi-build
           sudo ./build.sh \
             BOARD=orangepi4pro \
-            BRANCH=next \
+            BRANCH=current \
             BUILD_OPT=image \
             RELEASE=${{ steps.params.outputs.release }} \
             BUILD_MINIMAL=${{ steps.params.outputs.build_minimal }} \
