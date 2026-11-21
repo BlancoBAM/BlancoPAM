@@ -108,12 +108,15 @@ jobs:
             /usr/bin/arm-linux-gnueabi-cpp arm-linux-gnueabi-cpp \
             /usr/bin/arm-linux-gnueabi-cpp-11 100
 
-          # U-Boot v2018.05 + GCC 11 + modern binutils (2.42) can trigger a PIE
-          # link failure on the final "LD u-boot" step.  GCC 11's arm-linux-gnueabi
-          # spec may default to PIE, and the U-Boot v2018.05 linker script is not
-          # PIE-compatible.  Fix: a thin wrapper script that injects -fno-pie -no-pie.
+          # U-Boot v2018.05 + GCC 11 + modern binutils (2.42) has two issues:
+          # 1. PIE link failure on "LD u-boot": GCC 11 arm-linux-gnueabi may default
+          #    to PIE, but the U-Boot v2018.05 linker script is not PIE-compatible.
+          # 2. board/sunxi/board.c: GCC 11 treats conflicting attributes (noreturn +
+          #    const on ____ilog2_NaN in include/linux/log2.h) as a warning, which
+          #    -Werror turns into a fatal error.
+          # Fix: thin wrapper injecting -fno-pie -no-pie -Wno-error=attributes.
           # /usr/local/bin precedes /usr/bin in PATH so it shadows the real binary.
-          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@"\n' \
+          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie -Wno-error=attributes "$@"\n' \
             | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
           sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
 
@@ -143,9 +146,10 @@ jobs:
       - name: Inject A733 kernel patches
         run: |
           PATCH_SRC="a733-patches/patch"
-          # BRANCH=current → orangepi-build reads patches from sun60iw2-current
-          # (KERNELPATCHDIR is set to ${BOARDFAMILY}-${BRANCH} in sun60iw2.conf)
-          PATCH_DST="orangepi-build/external/patch/kernel/sun60iw2-current"
+          # BRANCH=next → orangepi-build reads patches from sun60iw2-next
+          # (KERNELPATCHDIR is set to ${BOARDFAMILY}-${BRANCH} in sun60iw2.conf,
+          #  and orangepi-build.patch adds BRANCH=next + mainline 6.18 support)
+          PATCH_DST="orangepi-build/external/patch/kernel/sun60iw2-next"
           mkdir -p "$PATCH_DST"
 
           # Core A733 patch — copy whatever patch file exists in the repo
@@ -188,11 +192,11 @@ jobs:
       - name: Inject A733 kernel defconfig
         run: |
           mkdir -p orangepi-build/external/config/kernel
-          # BRANCH=current → orangepi-build looks for linux-sun60iw2-current-a733.config
-          # (LINUXCONFIG is set to linux-sun60iw2-current-a733 in sun60iw2.conf for
-          #  orangepi4pro boards; the -a733 suffix is applied by the board detection logic)
+          # BRANCH=next → orangepi-build looks for linux-sun60iw2-next-a733.config
+          # (orangepi-build.patch configures LINUXCONFIG=linux-sun60iw2-next-a733
+          #  for orangepi4pro boards with BRANCH=next)
           cp -v a733-patches/config/orangepi_4pro_defconfig \
-            orangepi-build/external/config/kernel/linux-sun60iw2-current-a733.config
+            orangepi-build/external/config/kernel/linux-sun60iw2-next-a733.config
 
       # -----------------------------------------------------------------------
       - name: Inject BSP overlay files
@@ -264,7 +268,7 @@ jobs:
           echo ""
           echo "  ── Board / Kernel ──────────────────────────────────────"
           echo "  BOARD                           = orangepi4pro"
-          echo "  BRANCH                          = current  (Linux 6.6.y OrangePi kernel)"
+          echo "  BRANCH                          = next  (mainline Linux 6.18.y via orangepi-build.patch)"
           echo "  BUILD_OPT                       = image"
           echo ""
           echo "  ── OS / Desktop ─────────────────────────────────────────"
@@ -297,10 +301,10 @@ jobs:
           echo "  ── Patches injected ─────────────────────────────────────"
           echo "  Patch source  : jonas5/Allwinner-A733-kernel"
           echo "  Kernel patches:"
-          ls -1 orangepi-build/external/patch/kernel/sun60iw2-current/ 2>/dev/null | sed 's/^/    /'
+          ls -1 orangepi-build/external/patch/kernel/sun60iw2-next/ 2>/dev/null | sed 's/^/    /'
           echo "  U-Boot patches:"
           ls -1 orangepi-build/external/patch/u-boot/u-boot-sunxi/ 2>/dev/null | sed 's/^/    /' || echo "    (none)"
-          echo "  Defconfig     : linux-sun60iw2-current-a733.config"
+          echo "  Defconfig     : linux-sun60iw2-next-a733.config"
           echo ""
           echo "============================================================"
 
@@ -310,7 +314,7 @@ jobs:
             echo "| Variable | Value |"
             echo "|---|---|"
             echo "| \`BOARD\` | \`orangepi4pro\` |"
-            echo "| \`BRANCH\` | \`current\` (Linux 6.6.y OrangePi kernel) |"
+            echo "| \`BRANCH\` | \`next\` (mainline Linux 6.18.y via orangepi-build.patch) |"
             echo "| \`BUILD_OPT\` | \`image\` |"
             echo "| \`RELEASE\` | \`${{ steps.params.outputs.release }}\` |"
             echo "| \`BUILD_MINIMAL\` | \`${{ steps.params.outputs.build_minimal }}\` |"
@@ -331,14 +335,13 @@ jobs:
       - name: Build SD card image
         run: |
           cd orangepi-build
-          # BRANCH=current → Linux 6.6.y OrangePi kernel (the only supported branch
-          #   for orangepi4pro; 'legacy'=5.15, 'current'=6.6, no 'next' branch).
-          # The A733 kernel patches are injected via sun60iw2-current patch dir.
-          # SKIP_EXTERNAL_TOOLCHAINS=yes → find_toolchain() returns /usr/bin, so
-          #   the GCC 11 alternatives set above are picked up automatically.
+          # BRANCH=next → mainline Linux 6.18.y, enabled by orangepi-build.patch
+          #   which adds 'next' to the orangepi4pro board config and sun60iw2.conf.
+          # SKIP_EXTERNAL_TOOLCHAINS=yes → find_toolchain() falls back to /usr/bin
+          #   so the GCC 11 wrapper + alternatives set above are picked up.
           sudo ./build.sh \
             BOARD=orangepi4pro \
-            BRANCH=current \
+            BRANCH=next \
             BUILD_OPT=image \
             RELEASE=${{ steps.params.outputs.release }} \
             BUILD_MINIMAL=${{ steps.params.outputs.build_minimal }} \
