@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: build-fix <build@ci>
+Date: Fri, 21 Nov 2026 00:00:00 +0000
+Subject: [PATCH] include/linux/log2.h: fix noreturn+const attribute conflict (GCC 11)
+
+GCC 11 introduced a warning (upgraded to error by -Werror) when a
+function declaration carries both __attribute__((const)) and
+__attribute__((noreturn)), because "const" implies the function returns
+a value, while "noreturn" means it never returns — the two are
+contradictory.
+
+The noreturn attribute on ____ilog2_NaN() was originally added to
+produce a link-time error when ilog2() is called with a constant 0 or
+non-power-of-2 argument. The const attribute already makes the compiler
+treat it as a pure function and handles constant folding. Removing
+noreturn silences the GCC 11 -Werror=attributes diagnostic while
+preserving all existing functionality.
+
+This matches the fix applied in the upstream Linux kernel:
+  commit 53bf7963ae76 ("include/linux/log2.h: remove noreturn from
+  __ilog2_NaN")
+
+Fixes: board/sunxi/board.c compilation failure:
+  include/linux/log2.h:26:1: error: ignoring attribute 'noreturn'
+  because it conflicts with attribute 'const' [-Werror=attributes]
+---
+ include/linux/log2.h | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/include/linux/log2.h b/include/linux/log2.h
+index 1111111..2222222 100644
+--- a/include/linux/log2.h
++++ b/include/linux/log2.h
+@@ -20,8 +20,7 @@
+  * deal with unrepresentable constant logarithms
+  */
+ #ifdef CONFIG_ARM
+-extern __attribute__((const, noreturn))
++extern __attribute__((const))
+ #endif
+ 
+ int ____ilog2_NaN(void);

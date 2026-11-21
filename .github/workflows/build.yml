@@ -116,7 +116,9 @@ jobs:
           #    -Werror turns into a fatal error.
           # Fix: thin wrapper injecting -fno-pie -no-pie -Wno-error=attributes.
           # /usr/local/bin precedes /usr/bin in PATH so it shadows the real binary.
-          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie -Wno-error=attributes "$@"\n' \
+          # -Wno-error=attributes appended AFTER "$@" so it overrides any -Werror
+          # already present in the Makefile's CFLAGS (last flag wins in GCC).
+          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@" -Wno-error=attributes\n' \
             | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
           sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
 
@@ -187,6 +189,12 @@ jobs:
           if ls a733-patches/patch/u-boot/u-boot-sunxi/*.patch 1>/dev/null 2>&1; then
             cp -v a733-patches/patch/u-boot/u-boot-sunxi/*.patch "$UBOOT_DST/"
           fi
+
+          # GCC 11 rejects __attribute__((const, noreturn)) on ____ilog2_NaN in
+          # include/linux/log2.h — 'const' (returns a value) contradicts 'noreturn'.
+          # Inject a patch to remove the conflicting 'noreturn' attribute, matching
+          # the upstream Linux kernel fix (commit 53bf7963ae76).
+          cp -v 0004-include-linux-log2-fix-noreturn-const-attr-conflict.patch "$UBOOT_DST/"
 
       # -----------------------------------------------------------------------
       - name: Inject A733 kernel defconfig
