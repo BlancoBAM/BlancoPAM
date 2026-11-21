@@ -108,17 +108,19 @@ jobs:
             /usr/bin/arm-linux-gnueabi-cpp arm-linux-gnueabi-cpp \
             /usr/bin/arm-linux-gnueabi-cpp-11 100
 
-          # U-Boot v2018.05 + GCC 11 + modern binutils (2.42) has two issues:
-          # 1. PIE link failure on "LD u-boot": GCC 11 arm-linux-gnueabi may default
-          #    to PIE, but the U-Boot v2018.05 linker script is not PIE-compatible.
-          # 2. board/sunxi/board.c: GCC 11 treats conflicting attributes (noreturn +
-          #    const on ____ilog2_NaN in include/linux/log2.h) as a warning, which
-          #    -Werror turns into a fatal error.
-          # Fix: thin wrapper injecting -fno-pie -no-pie -Wno-error=attributes.
-          # /usr/local/bin precedes /usr/bin in PATH so it shadows the real binary.
-          # -Wno-error=attributes appended AFTER "$@" so it overrides any -Werror
-          # already present in the Makefile's CFLAGS (last flag wins in GCC).
-          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@" -Wno-error=attributes\n' \
+          # U-Boot v2018.05 (sun60iw2 fork) + GCC 11 has many warnings that GCC 11
+          # promotes to errors under -Werror.  The U-Boot Makefile sets -Werror
+          # globally.  Rather than patch every affected file, we suppress the
+          # entire -Werror promotion in the GCC wrapper.  Known issues:
+          #   -Werror=attributes        (log2.h const+noreturn — also patched)
+          #   -Werror=address-of-packed-member (disk/part_efi.c)
+          #   -Werror=array-parameter=  (drivers/sunxi_power/bmu.c)
+          #   -Werror=misleading-indentation (drivers/video/drm/sunxi_device/sunxi_hdmi.c)
+          #   -Werror=sizeof-pointer-div (include/linux/kernel.h)
+          # Fix: thin wrapper prepending -fno-pie -no-pie and appending -Wno-error
+          # (which turns off ALL -Werror promotions regardless of which -Werror=X
+          # flags the Makefile injects — later flags win in GCC).
+          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@" -Wno-error\n' \
             | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
           sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
 
