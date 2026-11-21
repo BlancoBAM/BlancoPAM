@@ -77,13 +77,22 @@ jobs:
           df -h
 
       # -----------------------------------------------------------------------
+      # Register QEMU binfmt handlers for ARM64 cross-build (REQUIRED for
+      # debootstrap Stage 2 — static qemu-aarch64-static must be present
+      # inside the chroot so the host kernel can exec ARM64 ELFs via binfmt_misc)
+      - name: Set up QEMU (ARM64 binfmt)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      # -----------------------------------------------------------------------
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             git make gcc g++ gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
             bison flex bc libssl-dev libncurses-dev libelf-dev \
-            debootstrap qemu-user-binfmt binfmt-support u-boot-tools \
+            debootstrap qemu-user-static binfmt-support u-boot-tools \
             rsync cpio kmod parted dosfstools fdisk xz-utils curl wget \
             zstd pigz python3 device-tree-compiler dialog lzop \
             libyaml-dev pkg-config libarchive-tools
