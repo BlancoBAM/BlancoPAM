@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index abc1234..def5678 100644
+--- a/Makefile
++++ b/Makefile
+@@ -448,8 +448,7 @@
+ 
+ KBUILD_CFLAGS   := -Wall -Wstrict-prototypes \
+ 		   -Wno-format-security \
+-		   -fno-builtin -ffreestanding $(CSTD_FLAG) \
+-		   -Werror
++		   -fno-builtin -ffreestanding $(CSTD_FLAG)
+ ifeq (x$(CONFIG_ARCH_RV32I), xy)
+ KBUILD_CFLAGS	+= -Wno-error=address-of-packed-member
+ KBUILD_CFLAGS	+= -Wno-address-of-packed-member

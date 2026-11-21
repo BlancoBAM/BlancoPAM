@@ -108,19 +108,12 @@ jobs:
             /usr/bin/arm-linux-gnueabi-cpp arm-linux-gnueabi-cpp \
             /usr/bin/arm-linux-gnueabi-cpp-11 100
 
-          # U-Boot v2018.05 (sun60iw2 fork) + GCC 11 has many warnings that GCC 11
-          # promotes to errors under -Werror.  The U-Boot Makefile sets -Werror
-          # globally.  Rather than patch every affected file, we suppress the
-          # entire -Werror promotion in the GCC wrapper.  Known issues:
-          #   -Werror=attributes        (log2.h const+noreturn — also patched)
-          #   -Werror=address-of-packed-member (disk/part_efi.c)
-          #   -Werror=array-parameter=  (drivers/sunxi_power/bmu.c)
-          #   -Werror=misleading-indentation (drivers/video/drm/sunxi_device/sunxi_hdmi.c)
-          #   -Werror=sizeof-pointer-div (include/linux/kernel.h)
-          # Fix: thin wrapper prepending -fno-pie -no-pie and appending -Wno-error
-          # (which turns off ALL -Werror promotions regardless of which -Werror=X
-          # flags the Makefile injects — later flags win in GCC).
-          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@" -Wno-error\n' \
+          # U-Boot v2018.05 (sun60iw2 fork) + GCC 11 PIE issue:
+          # GCC 11 arm-linux-gnueabi may default to PIE, but the U-Boot v2018.05
+          # linker script is not PIE-compatible → LD fails.
+          # Fix: thin wrapper injecting -fno-pie -no-pie before "$@".
+          # The -Werror issue is handled via patch 0005 (removes -Werror from Makefile).
+          printf '#!/bin/sh\nexec /usr/bin/arm-linux-gnueabi-gcc-11 -fno-pie -no-pie "$@"\n' \
             | sudo tee /usr/local/bin/arm-linux-gnueabi-gcc > /dev/null
           sudo chmod +x /usr/local/bin/arm-linux-gnueabi-gcc
 
@@ -197,6 +190,14 @@ jobs:
           # Inject a patch to remove the conflicting 'noreturn' attribute, matching
           # the upstream Linux kernel fix (commit 53bf7963ae76).
           cp -v 0004-include-linux-log2-fix-noreturn-const-attr-conflict.patch "$UBOOT_DST/"
+
+          # GCC 11 promotes many warnings to errors that U-Boot v2018.05 (sun60iw2 fork)
+          # was never compiled against. Remove -Werror from KBUILD_CFLAGS entirely.
+          # Affected warnings: address-of-packed-member (disk/part_efi.c),
+          #   array-parameter= (drivers/sunxi_power/bmu.c),
+          #   misleading-indentation (drivers/video/drm/sunxi_device/sunxi_hdmi.c),
+          #   sizeof-pointer-div (include/linux/kernel.h).
+          cp -v 0005-Makefile-remove-Werror-for-GCC11-compat.patch "$UBOOT_DST/"
 
       # -----------------------------------------------------------------------
       - name: Inject A733 kernel defconfig
