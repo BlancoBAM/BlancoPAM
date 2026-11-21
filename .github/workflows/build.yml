@@ -93,12 +93,21 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             git make gcc g++ gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi \
+            gcc-11-arm-linux-gnueabi binutils-arm-linux-gnueabi \
             bison flex bc libssl-dev libncurses-dev libelf-dev \
             debootstrap qemu-user-static binfmt-support u-boot-tools \
             rsync cpio kmod parted dosfstools fdisk xz-utils curl wget \
             zstd pigz python3 device-tree-compiler dialog lzop \
             libyaml-dev pkg-config libarchive-tools
+          # Pin arm-linux-gnueabi-gcc to GCC 11 — U-Boot v2018.05 is incompatible
+          # with GCC 12+ (Ubuntu 24.04 ships GCC 15 by default for this toolchain)
+          sudo update-alternatives --install \
+            /usr/bin/arm-linux-gnueabi-gcc arm-linux-gnueabi-gcc \
+            /usr/bin/arm-linux-gnueabi-gcc-11 100
+          sudo update-alternatives --install \
+            /usr/bin/arm-linux-gnueabi-cpp arm-linux-gnueabi-cpp \
+            /usr/bin/arm-linux-gnueabi-cpp-11 100
+          arm-linux-gnueabi-gcc-11 --version
 
       # -----------------------------------------------------------------------
       - name: Clone orangepi-build
